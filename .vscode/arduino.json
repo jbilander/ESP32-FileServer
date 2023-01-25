@@ -1,0 +1,7 @@
+{
+    "configuration": "FlashFreq=40,UploadSpeed=115200,DebugLevel=none",
+    "board": "esp32:esp32:esp32doit-devkit-v1",
+    "sketch": "ESP32-FileServer.ino",
+    "port": "COM4",
+    "output": "build"
+}

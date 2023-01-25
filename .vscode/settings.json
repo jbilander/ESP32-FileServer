@@ -1,0 +1,9 @@
+{
+    "arduino.enableUSBDetection": true,
+    "arduino.logLevel": "verbose",
+    "arduino.path": "C:/Bin",
+    "arduino.commandPath": "arduino-cli.exe",
+    "arduino.useArduinoCli": true,
+    "arduino.disableIntelliSenseAutoGen": true,
+    "arduino.defaultBaudRate": 115200
+}
