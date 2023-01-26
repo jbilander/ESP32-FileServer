@@ -1,14 +1,10 @@
 #include <Arduino.h>
 #include <SimpleCLI.h>
 
-SimpleCLI cli;
-Command ping;
-
 TaskHandle_t Task_CLI;
 TaskHandle_t Task_FTP;
 
 // const int LED = 2;
-bool showPrompt = true;
 
 void setup()
 {
@@ -44,20 +40,19 @@ void setup()
 
 void TaskCLI(void *pvParameters)
 {
+    SimpleCLI cli;
+    Command ping;
+    Command dir;
+
+    String input;
+    bool showPrompt = true;
+
     Serial.print("TaskCLI running on core ");
     Serial.println(xPortGetCoreID());
 
     // Create the commands
     ping = cli.addCmd("ping");
-
-    if (!ping)
-    {
-        Serial.println("Something went wrong :(");
-    }
-    else
-    {
-        Serial.println("Ping was added to the CLI!");
-    }
+    dir = cli.addCmd("dir");
 
     while (true)
     {
@@ -69,41 +64,62 @@ void TaskCLI(void *pvParameters)
 
         if (Serial2.available())
         {
-            // Read out string from the serial monitor
-            String input = Serial2.readStringUntil('\n');
+            int keycode = Serial2.read();
+            char c = (char)keycode;
 
-            // Echo the user input
-            Serial2.println(input);
-            showPrompt = true;
+            switch (keycode)
+            {
+            case (13): // CR (Carriage return)
+                Serial2.println();
+                cli.parse(input);
+                showPrompt = true;
+                input.clear();
+                break;
 
-            // Parse the user input into the CLI
-            cli.parse(input);
+            case (8): // BS (Backspace)
+                if (input.length() > 0)
+                {
+                    String tmp = "";
+                    for (int i = 0; i < input.length() - 1; i++)
+                    {
+                        tmp += input[i];
+                    }
+                    input = tmp;
+
+                    Serial2.print(c);
+                    Serial2.print(' ');
+                    Serial2.print(c);
+                }
+                break;
+
+            default:
+                input += c;
+                Serial2.print(c);
+            }
         }
 
         // Check for newly parsed commands
         if (cli.available())
         {
-            // Get command out of queue
             Command cmd = cli.getCmd();
 
-            // React on our ping command
             if (cmd == ping)
             {
                 Serial2.println("Pong!");
+            }
+
+            if (cmd == dir)
+            {
+                Serial2.println("Dur!");
             }
         }
 
         // Check for parsing errors
         if (cli.errored())
         {
-            // Get error out of queue
             CommandError cmdError = cli.getError();
-
-            // Print the error
             Serial2.print("ERROR: ");
             Serial2.println(cmdError.toString());
-
-            // Print correct command structure
             if (cmdError.hasCommand())
             {
                 Serial2.print("Did you mean \"");
