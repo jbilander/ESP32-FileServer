@@ -1,17 +1,76 @@
 #include <Arduino.h>
 #include <SimpleCLI.h>
+#include <SD.h>
+#include <SimpleFTPServer.h>
 
 TaskHandle_t Task_CLI;
 TaskHandle_t Task_FTP;
 
-// const int LED = 2;
+/*
+SPI  | MOSI     MISO     CLK      CS
+-----|--------|--------|--------|-------
+VSPI | GPIO23 | GPIO19 | GPIO18 | GPIO5
+HSPI | GPIO13 | GPIO12 | GPIO14 | GPIO15
+*/
+
+#define MOSI 23
+#define MISO 19
+#define SCK 18
+#define CS 5
+
+SPIClass spi = SPIClass(VSPI);
+
+// Initialize SD card
+void initSDCard()
+{
+    uint64_t totalB;   // total Bytes
+    uint64_t freeB;    // free Bytes
+    uint64_t usedB;    // used Bytes = total Bytes - free Bytes
+    uint64_t cardSize; // only for SD: size of card
+
+    spi.begin(SCK, MISO, MOSI, CS);
+
+    Serial.println("\nMounting SD card");
+    if (!SD.begin(CS, spi, 80000000))
+    {
+        Serial.println("Card Mount Failed");
+        return;
+    }
+
+    switch (SD.cardType())
+    {
+    case (CARD_NONE):
+        Serial.println("No SD card attached");
+        return;
+    case (CARD_MMC):
+        Serial.println("MMC");
+        break;
+    case (CARD_SD):
+        Serial.println("SDSC");
+        break;
+    case (CARD_SDHC):
+        Serial.println("SDHC");
+        break;
+    default:
+        Serial.println("UNKNOWN");
+    }
+
+    Serial.println();
+    totalB = SD.totalBytes();
+    usedB = SD.usedBytes();
+    freeB = totalB - usedB; // Number Of freeBytes in SD
+    cardSize = SD.cardSize() / (1024 * 1024);
+    Serial.printf("SD: total: %llu,  free: %llu,  used: %llu, card size: %llu MB\n", totalB, freeB, usedB, cardSize);
+    Serial.println();
+}
 
 void setup()
 {
     Serial.begin(115200); // HardwareSerial 0
-    Serial2.begin(38400); // HardwareSerial 2
+    Serial2.begin(9200);  // HardwareSerial 2
     Serial2.println();
-    // pinMode(LED, OUTPUT);
+
+    initSDCard();
 
     // create a task that will be executed in the TaskCLI() function, with priority 1 and executed on core 0
     xTaskCreatePinnedToCore(
@@ -42,7 +101,7 @@ void TaskCLI(void *pvParameters)
 {
     SimpleCLI cli;
     Command ping;
-    Command dir;
+    Command cmdLs;
 
     String input;
     bool showPrompt = true;
@@ -52,7 +111,10 @@ void TaskCLI(void *pvParameters)
 
     // Create the commands
     ping = cli.addCmd("ping");
-    dir = cli.addCmd("dir");
+
+    cmdLs = cli.addCmd("ls");
+    cmdLs.addFlagArg("a");
+    cmdLs.setDescription(" Lists files in directory (-a for all)");
 
     while (true)
     {
@@ -107,10 +169,10 @@ void TaskCLI(void *pvParameters)
             {
                 Serial2.println("Pong!");
             }
-
-            if (cmd == dir)
+            else if (cmd == cmdLs)
             {
-                Serial2.println("Dur!");
+                Argument a = cmd.getArgument("a");
+                listDir(SD, "/", 0, a.isSet());
             }
         }
 
@@ -144,4 +206,54 @@ void TaskFTP(void *pvParameters)
 
 void loop()
 {
+}
+
+void listDir(fs::FS &fs, const char *dirname, uint8_t levels, bool listall)
+{
+    // Serial2.printf("Listing directory: %s\n\r", dirname);
+    // Serial2.println();
+
+    File root = fs.open(dirname);
+    if (!root)
+    {
+        Serial2.println("Failed to open directory");
+        return;
+    }
+    if (!root.isDirectory())
+    {
+        Serial2.println("Not a directory");
+        return;
+    }
+
+    File file = root.openNextFile();
+    while (file)
+    {
+        if (file.isDirectory())
+        {
+            // Serial2.print("  DIR: ");
+            Serial2.println(file.name());
+            if (levels)
+            {
+                listDir(fs, file.name(), levels - 1, listall);
+            }
+        }
+        else
+        {
+            // Serial2.print(" FILE: ");
+            Serial2.print(file.name() + 1);
+
+            if (listall)
+            {
+                time_t t = file.getLastWrite();
+                struct tm *tmstruct = gmtime(&t);
+                Serial2.printf("  [Size: %d, Date modified: %d-%02d-%02d %02d:%02d:%02d (UTC)]\n\r", file.size(), (tmstruct->tm_year) + 1900,
+                               (tmstruct->tm_mon) + 1, tmstruct->tm_mday, tmstruct->tm_hour, tmstruct->tm_min, tmstruct->tm_sec);
+            }
+            else
+            {
+                Serial2.println();
+            }
+        }
+        file = root.openNextFile();
+    }
 }
