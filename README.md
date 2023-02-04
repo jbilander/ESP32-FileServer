@@ -7,16 +7,16 @@ The idea is to connect a `ESP32` to the Amiga Parallel Port to act as a filehub 
 
 Level shifting will be needed since the `ESP32` is not 5V-tolerant on the GPIO-pins
 
-This project uses these libraries: <br />
+This project currently uses these libraries: <br />
 https://github.com/peterus/ESP-FTP-Server-Lib <br />
 https://github.com/SpacehuhnTech/SimpleCLI <br />
 
 Status:<br />
 Currently it's possible to FTP with active-ftp to the `ESP32` and store files on a `FAT32` MicroSD-card connected to the SPI-pins `(MOSI 23, MISO 19, SCK 18, CS 5)` on the `ESP32`.
-It is also possible to list the content by connecting a UART-to-TTL to `UART2` on the `ESP32` and type the command `ls` or `ls -a`.
+It is also possible to list the content by connecting a USB-to-TTL-serial-UART-converter to `UART2` (`TX2`, `RX2`) on the `ESP32` and type the command `ls` or `ls -a`.
 
 ToDo:<br />
-Implement a file transfer protocol for the centronics parallel port that will connect to the `ESP32`.<br />
+Implement a file transfer protocol for the ESP32 that will connect to the Amiga over the parallel port.<br />
 `Kermit`, `Zmodem` or `HS/Link` are candidate protocols.
 
 Module I use:<br />
