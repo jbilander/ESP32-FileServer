@@ -1,7 +1,14 @@
 #include <Arduino.h>
 #include <SimpleCLI.h>
 #include <SD.h>
-#include <SimpleFTPServer.h>
+#include <WiFi.h>
+#include <ESP-FTP-Server-Lib.h>
+#include <FTPFilesystem.h>
+
+#define WIFI_SSID "WIFI_SSID"
+#define WIFI_PASSWORD "WIFI_PASSWORD"
+#define FTP_USER "ftp_user"
+#define FTP_PASSWORD "ftp_password"
 
 TaskHandle_t Task_CLI;
 TaskHandle_t Task_FTP;
@@ -19,9 +26,10 @@ HSPI | GPIO13 | GPIO12 | GPIO14 | GPIO15
 #define CS 5
 
 SPIClass spi = SPIClass(VSPI);
+FTPServer ftpSrv;
 
 // Initialize SD card
-void initSDCard()
+bool initSDCard()
 {
     uint64_t totalB;   // total Bytes
     uint64_t freeB;    // free Bytes
@@ -34,14 +42,14 @@ void initSDCard()
     if (!SD.begin(CS, spi, 80000000))
     {
         Serial.println("Card Mount Failed");
-        return;
+        return false;
     }
 
     switch (SD.cardType())
     {
     case (CARD_NONE):
         Serial.println("No SD card attached");
-        return;
+        return false;
     case (CARD_MMC):
         Serial.println("MMC");
         break;
@@ -60,8 +68,46 @@ void initSDCard()
     usedB = SD.usedBytes();
     freeB = totalB - usedB; // Number Of freeBytes in SD
     cardSize = SD.cardSize() / (1024 * 1024);
-    Serial.printf("SD: total: %llu,  free: %llu,  used: %llu, card size: %llu MB\n", totalB, freeB, usedB, cardSize);
+    Serial.printf("SD: total: %llu,  free: %llu,  used: %llu, card size: %llu MB\n\r", totalB, freeB, usedB, cardSize);
+    return true;
+}
+
+// Initialize Wifi
+void initWifi()
+{
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+
+    while (WiFi.status() != WL_CONNECTED)
+    {
+        delay(500);
+        Serial.print(".");
+    }
+
     Serial.println();
+    Serial.print("Connected to ");
+    Serial.println(WIFI_SSID);
+    Serial.print("IP address: ");
+    Serial.println(WiFi.localIP());
+
+    // FTP Setup, ensure SD with FAT is ok before ftp
+    Serial.print(F("Inizializing FS..."));
+    if (initSDCard())
+    {
+        Serial.println(F("done."));
+    }
+    else
+    {
+        Serial.println(F("fail."));
+        while (true)
+        {
+            delay(1000);
+        };
+    }
+
+    ftpSrv.addUser(FTP_USER, FTP_PASSWORD);
+    ftpSrv.addFilesystem("SD", &SD);
+    ftpSrv.begin();
 }
 
 void setup()
@@ -70,7 +116,7 @@ void setup()
     Serial2.begin(9200);  // HardwareSerial 2
     Serial2.println();
 
-    initSDCard();
+    initWifi();
 
     // create a task that will be executed in the TaskCLI() function, with priority 1 and executed on core 0
     xTaskCreatePinnedToCore(
@@ -200,6 +246,7 @@ void TaskFTP(void *pvParameters)
 
     while (true)
     {
+        ftpSrv.handle();
         vTaskDelay(1);
     }
 }
@@ -210,9 +257,6 @@ void loop()
 
 void listDir(fs::FS &fs, const char *dirname, uint8_t levels, bool listall)
 {
-    // Serial2.printf("Listing directory: %s\n\r", dirname);
-    // Serial2.println();
-
     File root = fs.open(dirname);
     if (!root)
     {
@@ -230,7 +274,6 @@ void listDir(fs::FS &fs, const char *dirname, uint8_t levels, bool listall)
     {
         if (file.isDirectory())
         {
-            // Serial2.print("  DIR: ");
             Serial2.println(file.name());
             if (levels)
             {
@@ -239,7 +282,6 @@ void listDir(fs::FS &fs, const char *dirname, uint8_t levels, bool listall)
         }
         else
         {
-            // Serial2.print(" FILE: ");
             Serial2.print(file.name() + 1);
 
             if (listall)
