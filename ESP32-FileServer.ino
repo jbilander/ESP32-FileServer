@@ -1,9 +1,9 @@
 #include <Arduino.h>
 #include <SimpleCLI.h>
-#include <SD.h>
+#include <SPI.h>
+#include <SdFat.h>
 #include <WiFi.h>
-#include <ESP-FTP-Server-Lib.h>
-#include <FTPFilesystem.h>
+#include <ESP32-FTP-Server.h>
 
 #define WIFI_SSID "WIFI_SSID"
 #define WIFI_PASSWORD "WIFI_PASSWORD"
@@ -12,6 +12,9 @@
 
 TaskHandle_t Task_CLI;
 TaskHandle_t Task_FTP;
+SPIClass spi = SPIClass(VSPI);
+FTPServer ftpSrv;
+SdFat sd;
 
 /*
 SPI  | MOSI     MISO     CLK      CS
@@ -24,56 +27,77 @@ HSPI | GPIO13 | GPIO12 | GPIO14 | GPIO15
 #define MISO 19
 #define SCK 18
 #define CS 5
-
-SPIClass spi = SPIClass(VSPI);
-FTPServer ftpSrv;
+#define SD_CONFIG SdSpiConfig(CS, DEDICATED_SPI, SD_SCK_MHZ(8), &spi)
 
 // Initialize SD card
 bool initSDCard()
 {
-    uint64_t totalB;   // total Bytes
-    uint64_t freeB;    // free Bytes
-    uint64_t usedB;    // used Bytes = total Bytes - free Bytes
-    uint64_t cardSize; // only for SD: size of card
+    uint64_t cardSize;
 
     spi.begin(SCK, MISO, MOSI, CS);
 
-    Serial.println("\nMounting SD card");
-    if (!SD.begin(CS, spi, 80000000))
+    if (!sd.begin(SD_CONFIG))
     {
         Serial.println("Card Mount Failed");
+        sd.printSdError(&Serial);
         return false;
     }
 
-    switch (SD.cardType())
+    cardSize = sd.card()->sectorCount();
+
+    /*
+    Capacity | Type
+    ---------|---------------------
+    SD       | 2GB and under
+    SDHC     | More than 2GB, up to 32GB
+    SDXC     | More than 32GB, up to 2TB
+    SDUC     | More than 2TB, up to 128TB
+    */
+
+    Serial.print("Card type: ");
+    switch (sd.card()->type())
     {
-    case (CARD_NONE):
-        Serial.println("No SD card attached");
-        return false;
-    case (CARD_MMC):
-        Serial.println("MMC");
+    case SD_CARD_TYPE_SD1:
+        Serial.println("SD1"); // Standard capacity V1 SD card
         break;
-    case (CARD_SD):
-        Serial.println("SDSC");
+    case SD_CARD_TYPE_SD2:
+        Serial.println("SD2"); // Standard capacity V2 SD card
         break;
-    case (CARD_SDHC):
-        Serial.println("SDHC");
+    case SD_CARD_TYPE_SDHC:
+        if (cardSize < 70000000) // The number of 512 byte data sectors in the card
+        {
+            Serial.println("SDHC"); // High Capacity SD card
+        }
+        else
+        {
+            Serial.println("SDXC"); // Extended Capacity SD card
+        }
         break;
     default:
-        Serial.println("UNKNOWN");
+        Serial.println("Unknown");
+        break;
     }
 
+    Serial.println("Scanning FAT, please wait.");
+    if (sd.fatType() <= FAT_TYPE_FAT32)
+    {
+        Serial.print("Volume type is: FAT");
+        Serial.println(int(sd.vol()->fatType()), DEC);
+    }
+    else
+    {
+        Serial.println("Volume type is: exFAT");
+    }
+
+    cardSize = cardSize * 512 / (1024 * 1024); // Card size in real MegaBytes
+    Serial.printf("Card size: %llu MB", cardSize);
     Serial.println();
-    totalB = SD.totalBytes();
-    usedB = SD.usedBytes();
-    freeB = totalB - usedB; // Number Of freeBytes in SD
-    cardSize = SD.cardSize() / (1024 * 1024);
-    Serial.printf("SD: total: %llu,  free: %llu,  used: %llu, card size: %llu MB\n\r", totalB, freeB, usedB, cardSize);
+
     return true;
 }
 
-// Initialize Wifi
-void initWifi()
+// Initialize WiFi
+void initWiFi()
 {
     WiFi.mode(WIFI_STA);
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
@@ -85,28 +109,28 @@ void initWifi()
     }
 
     Serial.println();
-    Serial.print("Connected to ");
-    Serial.println(WIFI_SSID);
+    Serial.print("Connected to: ");
+    Serial.println(WiFi.SSID());
     Serial.print("IP address: ");
     Serial.println(WiFi.localIP());
 
-    // FTP Setup, ensure SD with FAT is ok before ftp
-    Serial.print(F("Inizializing FS..."));
+    // FTP Setup, ensure SD with FAT/exFAT is ok before ftp
+    Serial.println("Initializing SD card...");
     if (initSDCard())
     {
-        Serial.println(F("done."));
+        Serial.println("...done.");
     }
     else
     {
-        Serial.println(F("fail."));
+        Serial.println("...fail.");
         while (true)
         {
             delay(1000);
-        };
+        }
     }
 
     ftpSrv.addUser(FTP_USER, FTP_PASSWORD);
-    ftpSrv.addFilesystem("SD", &SD);
+    ftpSrv.addFilesystem(&sd);
     ftpSrv.begin();
 }
 
@@ -116,7 +140,7 @@ void setup()
     Serial2.begin(9200);  // HardwareSerial 2
     Serial2.println();
 
-    initWifi();
+    initWiFi();
 
     // create a task that will be executed in the TaskCLI() function, with priority 1 and executed on core 0
     xTaskCreatePinnedToCore(
@@ -218,7 +242,7 @@ void TaskCLI(void *pvParameters)
             else if (cmd == cmdLs)
             {
                 Argument a = cmd.getArgument("a");
-                listDir(SD, "/", 0, a.isSet());
+                // listDir(SD, "/", 0, a.isSet());
             }
         }
 
@@ -255,6 +279,7 @@ void loop()
 {
 }
 
+/*
 void listDir(fs::FS &fs, const char *dirname, uint8_t levels, bool listall)
 {
     File root = fs.open(dirname);
@@ -299,3 +324,4 @@ void listDir(fs::FS &fs, const char *dirname, uint8_t levels, bool listall)
         file = root.openNextFile();
     }
 }
+*/
