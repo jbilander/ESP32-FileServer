@@ -7,8 +7,8 @@
 
 #define WIFI_SSID "WIFI_SSID"
 #define WIFI_PASSWORD "WIFI_PASSWORD"
-#define FTP_USER "ftp_user"
-#define FTP_PASSWORD "ftp_password"
+#define FTP_USER "ftp"
+#define FTP_PASSWORD "ftp"
 
 TaskHandle_t Task_CLI;
 TaskHandle_t Task_FTP;
