@@ -8,7 +8,8 @@ The idea is to connect a `ESP32` to the Amiga Parallel Port to act as a filehub 
 Level shifting will be needed since the `ESP32` is not 5V-tolerant on the GPIO-pins
 
 This project currently uses these libraries: <br />
-https://github.com/peterus/ESP-FTP-Server-Lib <br />
+https://github.com/jbilander/ESP32-FTP-Server <br />
+https://github.com/greiman/SdFat/ <br />
 https://github.com/SpacehuhnTech/SimpleCLI <br />
 
 Status:<br />
