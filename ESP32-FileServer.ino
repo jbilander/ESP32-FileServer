@@ -1,20 +1,23 @@
 #include <Arduino.h>
-#include <SimpleCLI.h>
 #include <SPI.h>
 #include <SdFat.h>
 #include <WiFi.h>
 #include <ESP32-FTP-Server.h>
+#include <ESPTelnet.h>
 
 #define WIFI_SSID "WIFI_SSID"
 #define WIFI_PASSWORD "WIFI_PASSWORD"
 #define FTP_USER "ftp"
 #define FTP_PASSWORD "ftp"
 
+ESPTelnet telnet;
 TaskHandle_t Task_CLI;
 TaskHandle_t Task_FTP;
 SPIClass spi = SPIClass(VSPI);
 FTPServer ftpSrv;
 SdFat sd;
+
+uint16_t port = 23; // telnet port
 
 /*
 SPI  | MOSI     MISO     CLK      CS
@@ -132,13 +135,19 @@ void initWiFi()
     ftpSrv.addUser(FTP_USER, FTP_PASSWORD);
     ftpSrv.addFilesystem(&sd);
     ftpSrv.begin();
+
+    telnet.onConnect(onTelnetConnect);
+    telnet.onConnectionAttempt(onTelnetConnectionAttempt);
+    telnet.onReconnect(onTelnetReconnect);
+    telnet.onDisconnect(onTelnetDisconnect);
+    telnet.onInputReceived(onTelnetInput);
+    telnet.begin(port);
 }
 
 void setup()
 {
     Serial.begin(115200); // HardwareSerial 0
     Serial2.begin(9200);  // HardwareSerial 2
-    Serial2.println();
 
     initWiFi();
 
@@ -154,7 +163,7 @@ void setup()
 
     delay(500);
 
-    // create a task that will be executed in the Task2code() function, with priority 1 and executed on core 1
+    // create a task that will be executed in the TaskFTP() function, with priority 1 and executed on core 1
     xTaskCreatePinnedToCore(
         TaskFTP,   /* Task function. */
         "TaskFTP", /* name of task. */
@@ -169,96 +178,12 @@ void setup()
 
 void TaskCLI(void *pvParameters)
 {
-    SimpleCLI cli;
-    Command ping;
-    Command cmdLs;
-
-    String input;
-    bool showPrompt = true;
-
     Serial.print("TaskCLI running on core ");
     Serial.println(xPortGetCoreID());
 
-    // Create the commands
-    ping = cli.addCmd("ping");
-
-    cmdLs = cli.addCmd("ls");
-    cmdLs.addFlagArg("a");
-    cmdLs.setDescription(" Lists files in directory (-a for all)");
-
     while (true)
     {
-        if (showPrompt)
-        {
-            Serial2.print(":/# ");
-            showPrompt = false;
-        }
-
-        if (Serial2.available())
-        {
-            int keycode = Serial2.read();
-            char c = (char)keycode;
-
-            switch (keycode)
-            {
-            case (13): // CR (Carriage return)
-                Serial2.println();
-                cli.parse(input);
-                showPrompt = true;
-                input.clear();
-                break;
-
-            case (8): // BS (Backspace)
-                if (input.length() > 0)
-                {
-                    String tmp = "";
-                    for (int i = 0; i < input.length() - 1; i++)
-                    {
-                        tmp += input[i];
-                    }
-                    input = tmp;
-
-                    Serial2.print(c);
-                    Serial2.print(' ');
-                    Serial2.print(c);
-                }
-                break;
-
-            default:
-                input += c;
-                Serial2.print(c);
-            }
-        }
-
-        // Check for newly parsed commands
-        if (cli.available())
-        {
-            Command cmd = cli.getCmd();
-
-            if (cmd == ping)
-            {
-                Serial2.println("Pong!");
-            }
-            else if (cmd == cmdLs)
-            {
-                Argument a = cmd.getArgument("a");
-                // listDir(SD, "/", 0, a.isSet());
-            }
-        }
-
-        // Check for parsing errors
-        if (cli.errored())
-        {
-            CommandError cmdError = cli.getError();
-            Serial2.print("ERROR: ");
-            Serial2.println(cmdError.toString());
-            if (cmdError.hasCommand())
-            {
-                Serial2.print("Did you mean \"");
-                Serial2.print(cmdError.getCommand().toString());
-                Serial2.println("\"?");
-            }
-        }
+        telnet.loop();
         vTaskDelay(1);
     }
 }
@@ -275,53 +200,53 @@ void TaskFTP(void *pvParameters)
     }
 }
 
+// (optional) callback functions for telnet events
+void onTelnetConnect(String ip)
+{
+    Serial.print("- Telnet: ");
+    Serial.print(ip);
+    Serial.println(" connected");
+
+    telnet.println("\nWelcome " + telnet.getIP());
+    telnet.println("(Use ^] + q  to disconnect.)");
+}
+
+void onTelnetDisconnect(String ip)
+{
+    Serial.print("- Telnet: ");
+    Serial.print(ip);
+    Serial.println(" disconnected");
+}
+
+void onTelnetReconnect(String ip)
+{
+    Serial.print("- Telnet: ");
+    Serial.print(ip);
+    Serial.println(" reconnected");
+}
+
+void onTelnetConnectionAttempt(String ip)
+{
+    Serial.print("- Telnet: ");
+    Serial.print(ip);
+    Serial.println(" tried to connected");
+}
+
+void onTelnetInput(String str)
+{
+    // checks for a certain command
+    if (str == "ping")
+    {
+        telnet.println("> pong");
+        Serial.println("- Telnet: pong");
+    }
+    else if (str == "bye")
+    {
+        telnet.println("> disconnecting you...");
+        telnet.disconnectClient();
+    }
+}
+
 void loop()
 {
 }
-
-/*
-void listDir(fs::FS &fs, const char *dirname, uint8_t levels, bool listall)
-{
-    File root = fs.open(dirname);
-    if (!root)
-    {
-        Serial2.println("Failed to open directory");
-        return;
-    }
-    if (!root.isDirectory())
-    {
-        Serial2.println("Not a directory");
-        return;
-    }
-
-    File file = root.openNextFile();
-    while (file)
-    {
-        if (file.isDirectory())
-        {
-            Serial2.println(file.name());
-            if (levels)
-            {
-                listDir(fs, file.name(), levels - 1, listall);
-            }
-        }
-        else
-        {
-            Serial2.print(file.name() + 1);
-
-            if (listall)
-            {
-                time_t t = file.getLastWrite();
-                struct tm *tmstruct = gmtime(&t);
-                Serial2.printf("  [Size: %d, Date modified: %d-%02d-%02d %02d:%02d:%02d (UTC)]\n\r", file.size(), (tmstruct->tm_year) + 1900,
-                               (tmstruct->tm_mon) + 1, tmstruct->tm_mday, tmstruct->tm_hour, tmstruct->tm_min, tmstruct->tm_sec);
-            }
-            else
-            {
-                Serial2.println();
-            }
-        }
-        file = root.openNextFile();
-    }
-}
-*/
