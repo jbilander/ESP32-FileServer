@@ -4,20 +4,27 @@
 #include <WiFi.h>
 #include <ESP32-FTP-Server.h>
 #include <ESPTelnet.h>
+#include "Common.h"
 
 #define WIFI_SSID "WIFI_SSID"
 #define WIFI_PASSWORD "WIFI_PASSWORD"
 #define FTP_USER "ftp"
 #define FTP_PASSWORD "ftp"
+#define RX1 36    // Re-assign to GPIO36 (VP-pin) since UART1 pins on ESP-WROOM-32 are reserved for the integrated flash memory chip.
+#define TX1 15    // Re-assign to GPIO15 since UART1 pins on ESP-WROOM-32 are reserved for the integrated flash memory chip.
+#define ACT_LED 2 // Activity LED pin
 
 ESPTelnet telnet;
 TaskHandle_t Task_CLI;
+TaskHandle_t Task_SerialCLI;
 TaskHandle_t Task_FTP;
-SPIClass spi = SPIClass(VSPI);
+SPIClass spi;
 FTPServer ftpSrv;
 SdFat sd;
 
-uint16_t port = 23; // telnet port
+uint16_t port = 23; // Telnet port, default is 23
+String path = "/";
+String prompt = path + ">";
 
 /*
 SPI  | MOSI     MISO     CLK      CS
@@ -26,10 +33,10 @@ VSPI | GPIO23 | GPIO19 | GPIO18 | GPIO5
 HSPI | GPIO13 | GPIO12 | GPIO14 | GPIO15
 */
 
-#define MOSI 23
-#define MISO 19
-#define SCK 18
-#define CS 5
+#define MOSI 13
+#define MISO 12
+#define SCK 14
+#define CS 4 // Assign CS to GPIO4 since GPIO15 is routed to TX1, and GPIO4 is used for CS on carrier board (Parallel_to_ESP32 PCB).
 #define SD_CONFIG SdSpiConfig(CS, DEDICATED_SPI, SD_SCK_MHZ(8), &spi)
 
 // Initialize SD card
@@ -146,8 +153,10 @@ void initWiFi()
 
 void setup()
 {
-    Serial.begin(115200); // HardwareSerial 0
-    Serial2.begin(9200);  // HardwareSerial 2
+    Serial.begin(115200);                      // HardwareSerial 0, UART0 pins are connected to the USB-to-Serial converter and are used for flashing and debugging.
+    Serial2.begin(38400);                      // HardwareSerial 2, used for Kermit over serial transfer
+    Serial1.begin(9600, SERIAL_8N1, RX1, TX1); // HardwareSerial 1, used for SimpleCLI over serial (optional instead of using telnet)
+    pinMode(ACT_LED, OUTPUT);
 
     initWiFi();
 
@@ -160,6 +169,18 @@ void setup()
         1,         /* priority of the task */
         &Task_CLI, /* Task handle to keep track of created task */
         0);        /* pin task to core 0 */
+
+    delay(500);
+
+    // create a task that will be executed in the TaskSerialCLI() function, with priority 1 and executed on core 0
+    xTaskCreatePinnedToCore(
+        TaskSerialCLI,   /* Task function. */
+        "TaskSerialCLI", /* name of task. */
+        10000,           /* Stack size of task */
+        NULL,            /* parameter of the task */
+        2,               /* priority of the task */
+        &Task_SerialCLI, /* Task handle to keep track of created task */
+        0);              /* pin task to core 0 */
 
     delay(500);
 
@@ -188,6 +209,40 @@ void TaskCLI(void *pvParameters)
     }
 }
 
+void TaskSerialCLI(void *pvParameters)
+{
+    Serial.print("TaskSerialCLI running on core ");
+    Serial.println(xPortGetCoreID());
+
+    String input;
+    Serial1.print("/>");
+
+    while (true)
+    {
+        if (Serial1.available())
+        {
+            int keycode = Serial1.read();
+            char c = (char)keycode;
+
+            switch (keycode)
+            {
+            case 13: // CR  (Carriage return)
+                onCliInput(input, UART);
+                Serial1.println();
+                input.clear();
+                break;
+
+            default:
+                input += c;
+                Serial1.print(c);
+                break;
+            }
+        }
+
+        vTaskDelay(1);
+    }
+}
+
 void TaskFTP(void *pvParameters)
 {
     Serial.print("TaskFTP running on core ");
@@ -207,8 +262,9 @@ void onTelnetConnect(String ip)
     Serial.print(ip);
     Serial.println(" connected");
 
-    telnet.println("\nWelcome " + telnet.getIP());
-    telnet.println("(Use ^] + q  to disconnect.)");
+    telnet.println("Welcome " + telnet.getIP());
+    telnet.println("(Escape character is '^]', type exit to disconnect)");
+    telnet.print("\n" + prompt);
 }
 
 void onTelnetDisconnect(String ip)
@@ -229,21 +285,25 @@ void onTelnetConnectionAttempt(String ip)
 {
     Serial.print("- Telnet: ");
     Serial.print(ip);
-    Serial.println(" tried to connected");
+    Serial.println(" tried to connect");
 }
 
 void onTelnetInput(String str)
 {
-    // checks for a certain command
-    if (str == "ping")
+    onCliInput(str, TELNET);
+}
+
+void onCliInput(String str, ClientEnum client)
+{
+    String line = str;
+    std::transform(line.begin(), line.end(), line.begin(), ::toupper);
+    std::vector<String> lineSplit = util::Split<std::vector<String>>(line, ' ');
+    String cmd = lineSplit[0];
+    Serial.println(client);
+
+    for (int i = 0; i < lineSplit.size(); i++)
     {
-        telnet.println("> pong");
-        Serial.println("- Telnet: pong");
-    }
-    else if (str == "bye")
-    {
-        telnet.println("> disconnecting you...");
-        telnet.disconnectClient();
+        Serial.println(lineSplit[i]);
     }
 }
 
