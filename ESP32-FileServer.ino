@@ -15,9 +15,9 @@
 #define ACT_LED 2 // Activity LED pin
 
 ESPTelnet telnet;
-TaskHandle_t Task_CLI;
-TaskHandle_t Task_SerialCLI;
-TaskHandle_t Task_FTP;
+TaskHandle_t task_TelnetCLI;
+TaskHandle_t task_SerialCLI;
+TaskHandle_t task_FTP;
 SPIClass spi;
 FTPServer ftpSrv;
 SdFat sd;
@@ -160,26 +160,26 @@ void setup()
 
     initWiFi();
 
-    // create a task that will be executed in the TaskCLI() function, with priority 1 and executed on core 0
+    // create a task that will be executed in the TaskTelnetCLI() function, with priority 1 and executed on core 0
     xTaskCreatePinnedToCore(
-        TaskCLI,   /* Task function. */
-        "TaskCLI", /* name of task. */
+        TaskTelnetCLI,   /* Task function. */
+        "TaskTelnetCLI", /* name of task. */
         10000,     /* Stack size of task */
         NULL,      /* parameter of the task */
         1,         /* priority of the task */
-        &Task_CLI, /* Task handle to keep track of created task */
+        &task_TelnetCLI, /* Task handle to keep track of created task */
         0);        /* pin task to core 0 */
 
     delay(500);
 
-    // create a task that will be executed in the TaskSerialCLI() function, with priority 1 and executed on core 0
+    // create a task that will be executed in the TaskSerialCLI() function, with priority 2 and executed on core 0
     xTaskCreatePinnedToCore(
         TaskSerialCLI,   /* Task function. */
         "TaskSerialCLI", /* name of task. */
         10000,           /* Stack size of task */
         NULL,            /* parameter of the task */
         2,               /* priority of the task */
-        &Task_SerialCLI, /* Task handle to keep track of created task */
+        &task_SerialCLI, /* Task handle to keep track of created task */
         0);              /* pin task to core 0 */
 
     delay(500);
@@ -191,15 +191,15 @@ void setup()
         10000,     /* Stack size of task */
         NULL,      /* parameter of the task */
         1,         /* priority of the task */
-        &Task_FTP, /* Task handle to keep track of created task */
+        &task_FTP, /* Task handle to keep track of created task */
         1);        /* pin task to core 1 */
 
     delay(500);
 }
 
-void TaskCLI(void *pvParameters)
+void TaskTelnetCLI(void *pvParameters)
 {
-    Serial.print("TaskCLI running on core ");
+    Serial.print("Task_TelnetCLI running on core ");
     Serial.println(xPortGetCoreID());
 
     while (true)
@@ -211,10 +211,11 @@ void TaskCLI(void *pvParameters)
 
 void TaskSerialCLI(void *pvParameters)
 {
-    Serial.print("TaskSerialCLI running on core ");
+    Serial.print("Task_SerialCLI running on core ");
     Serial.println(xPortGetCoreID());
 
     String input;
+    Serial1.println();
     Serial1.print("/>");
 
     while (true)
@@ -245,7 +246,7 @@ void TaskSerialCLI(void *pvParameters)
 
 void TaskFTP(void *pvParameters)
 {
-    Serial.print("TaskFTP running on core ");
+    Serial.print("Task_FTP running on core ");
     Serial.println(xPortGetCoreID());
 
     while (true)
@@ -293,13 +294,13 @@ void onTelnetInput(String str)
     onCliInput(str, TELNET);
 }
 
-void onCliInput(String str, ClientEnum client)
+//Cli input command from either Telnet or Serial (UART) client gets parsed here:
+void onCliInput(String input, ClientEnum client)
 {
-    String line = str;
+    String line = input;
     std::transform(line.begin(), line.end(), line.begin(), ::toupper);
     std::vector<String> lineSplit = util::Split<std::vector<String>>(line, ' ');
     String cmd = lineSplit[0];
-    Serial.println(client);
 
     for (int i = 0; i < lineSplit.size(); i++)
     {
