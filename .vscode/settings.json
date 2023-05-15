@@ -5,5 +5,10 @@
     "arduino.commandPath": "arduino-cli.exe",
     "arduino.useArduinoCli": true,
     "arduino.disableIntelliSenseAutoGen": true,
-    "arduino.defaultBaudRate": 115200
+    "arduino.defaultBaudRate": 115200,
+    "files.associations": {
+        "array": "cpp",
+        "limits": "cpp",
+        "type_traits": "cpp"
+    }
 }
