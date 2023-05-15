@@ -24,8 +24,13 @@ https://github.com/LennartHennigs/ESPTelnet <br />
 
 
 Status:<br />
-Currently it's possible to FTP with active-ftp to the `ESP32` and store files on a `FAT32` MicroSD-card connected to the SPI-pins `(MOSI 13, MISO 12, SCK 14, CS 4)` on the `ESP32`.
+Currently it's possible to FTP with active-ftp to the `ESP32` and store files on a `FAT\FAT32\exFAT` formatted MicroSD-card connected to the SPI-pins `(MOSI 13, MISO 12, SCK 14, CS 4)` on the `ESP32`.
 It is also possible to list the content by connecting a USB-to-TTL-serial-UART-converter to `UART2` (`TX2`, `RX2`) or connect via Telnet from your PC and type the command `ls`.
+<br />
+<br />
+`esptool.exe` command to flash the ESP32-DEVKIT-V1 board:
+
+    "C:\Users\Jorgen\AppData\Local\Arduino15\packages\esp32\tools\esptool_py\3.0.0/esptool.exe" --chip esp32 --port "COM4" --baud 115200 --before default_reset --after hard_reset write_flash -z --flash_mode dio --flash_freq 40m --flash_size detect 0xe000 "C:\Users\Jorgen\AppData\Local\Arduino15\packages\esp32\hardware\esp32\1.0.6/tools/partitions/boot_app0.bin" 0x1000 "C:\Users\Jorgen\AppData\Local\Arduino15\packages\esp32\hardware\esp32\1.0.6/tools/sdk/bin/bootloader_dio_40m.bin" 0x10000 "c:\Users\Jorgen\Projects\ESP32-FileServer\build/ESP32-FileServer.ino.bin" 0x8000 "c:\Users\Jorgen\Projects\ESP32-FileServer\build/ESP32-FileServer.ino.partitions.bin"
 
 ToDo:<br />
 Implement a file transfer protocol for the ESP32 that will connect to the Amiga over the parallel port.<br />
