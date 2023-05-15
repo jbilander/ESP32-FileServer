@@ -8,13 +8,24 @@ The idea is to connect a `ESP32` to the Amiga Parallel Port to act as a filehub 
 Level shifting will be needed since the `ESP32` is not 5V-tolerant on the GPIO-pins
 
 This project currently uses these libraries: <br />
+
+    Used library     Version Path                                                                                      
+    SPI              1.0     C:\Users\Jorgen\AppData\Local\Arduino15\packages\esp32\hardware\esp32\1.0.6\libraries\SPI 
+    SdFat            2.2.0   C:\Users\Jorgen\Documents\Arduino\libraries\SdFat                                         
+    WiFi             1.0     C:\Users\Jorgen\AppData\Local\Arduino15\packages\esp32\hardware\esp32\1.0.6\libraries\WiFi
+    ESP32-FTP-Server 1.0.0   C:\Users\Jorgen\Documents\Arduino\libraries\ESP32-FTP-Server                              
+    ESP Telnet       2.1.1   C:\Users\Jorgen\Documents\Arduino\libraries\ESPTelnet-2.1.1
+    
+<br />
+
 https://github.com/jbilander/ESP32-FTP-Server <br />
 https://github.com/greiman/SdFat/ <br />
-https://github.com/SpacehuhnTech/SimpleCLI <br />
+https://github.com/LennartHennigs/ESPTelnet <br />
+
 
 Status:<br />
-Currently it's possible to FTP with active-ftp to the `ESP32` and store files on a `FAT32` MicroSD-card connected to the SPI-pins `(MOSI 23, MISO 19, SCK 18, CS 5)` on the `ESP32`.
-It is also possible to list the content by connecting a USB-to-TTL-serial-UART-converter to `UART2` (`TX2`, `RX2`) on the `ESP32` and type the command `ls` or `ls -a`.
+Currently it's possible to FTP with active-ftp to the `ESP32` and store files on a `FAT32` MicroSD-card connected to the SPI-pins `(MOSI 13, MISO 12, SCK 14, CS 4)` on the `ESP32`.
+It is also possible to list the content by connecting a USB-to-TTL-serial-UART-converter to `UART2` (`TX2`, `RX2`) or connect via Telnet from your PC and type the command `ls`.
 
 ToDo:<br />
 Implement a file transfer protocol for the ESP32 that will connect to the Amiga over the parallel port.<br />
