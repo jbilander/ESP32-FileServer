@@ -1,5 +1,5 @@
-#ifndef COMMON_H_
-#define COMMON_H_
+#ifndef _UTIL_H_
+#define _UTIL_H_
 
 #include <Arduino.h>
 #include <list>
@@ -26,30 +26,33 @@ namespace util
         } while (next_idx != -1);
         return str_array;
     }
-}
 
-enum ClientEnum
-{
-    UART,
-    TELNET
-};
-
-enum CommandEnum
-{
-    LS,
-    DIR,
-    EXIT
-};
-
-struct CommandMap : public std::map<String, CommandEnum>
-{
-    CommandMap()
+    enum ClientEnum
     {
-        this->operator[]("LS") = LS;
-        this->operator[]("DIR") = DIR;
-        this->operator[]("EXIT") = EXIT;
+        UART,
+        TELNET
     };
-    ~CommandMap() {}
-};
+
+    enum CommandEnum
+    {
+        NOOP,
+        LS,
+        DIR,
+        EXIT
+    };
+
+    struct CommandMap : public std::map<String, CommandEnum>
+    {
+        CommandMap()
+        {
+            this->operator[]("NOOP") = NOOP;
+            this->operator[]("LS") = LS;
+            this->operator[]("DIR") = DIR;
+            this->operator[]("EXIT") = EXIT;
+        };
+        ~CommandMap() {}
+    };
+
+}
 
 #endif
