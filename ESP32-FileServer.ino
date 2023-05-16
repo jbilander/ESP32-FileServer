@@ -4,7 +4,8 @@
 #include <WiFi.h>
 #include <ESP32-FTP-Server.h>
 #include <ESPTelnet.h>
-#include "Common.h"
+#include <StreamString.h>
+#include "Util.h"
 
 #define WIFI_SSID "WIFI_SSID"
 #define WIFI_PASSWORD "WIFI_PASSWORD"
@@ -13,6 +14,8 @@
 #define RX1 36    // Re-assign to GPIO36 (VP-pin) since UART1 pins on ESP-WROOM-32 are reserved for the integrated flash memory chip.
 #define TX1 15    // Re-assign to GPIO15 since UART1 pins on ESP-WROOM-32 are reserved for the integrated flash memory chip.
 #define ACT_LED 2 // Activity LED pin
+
+using namespace util;
 
 ESPTelnet telnet;
 TaskHandle_t task_TelnetCLI;
@@ -155,7 +158,7 @@ void setup()
 {
     Serial.begin(115200);                      // HardwareSerial 0, UART0 pins are connected to the USB-to-Serial converter and are used for flashing and debugging.
     Serial2.begin(38400);                      // HardwareSerial 2, used for Kermit over serial transfer
-    Serial1.begin(9600, SERIAL_8N1, RX1, TX1); // HardwareSerial 1, used for SimpleCLI over serial (optional instead of using telnet)
+    Serial1.begin(9600, SERIAL_8N1, RX1, TX1); // HardwareSerial 1, used for CLI over serial (optional instead of using telnet)
     pinMode(ACT_LED, OUTPUT);
 
     initWiFi();
@@ -164,11 +167,11 @@ void setup()
     xTaskCreatePinnedToCore(
         TaskTelnetCLI,   /* Task function. */
         "TaskTelnetCLI", /* name of task. */
-        10000,     /* Stack size of task */
-        NULL,      /* parameter of the task */
-        1,         /* priority of the task */
+        10000,           /* Stack size of task */
+        NULL,            /* parameter of the task */
+        1,               /* priority of the task */
         &task_TelnetCLI, /* Task handle to keep track of created task */
-        0);        /* pin task to core 0 */
+        0);              /* pin task to core 0 */
 
     delay(500);
 
@@ -216,7 +219,7 @@ void TaskSerialCLI(void *pvParameters)
 
     String input;
     Serial1.println();
-    Serial1.print("/>");
+    Serial1.print(prompt);
 
     while (true)
     {
@@ -229,7 +232,6 @@ void TaskSerialCLI(void *pvParameters)
             {
             case 13: // CR  (Carriage return)
                 onCliInput(input, UART);
-                Serial1.println();
                 input.clear();
                 break;
 
@@ -294,17 +296,64 @@ void onTelnetInput(String str)
     onCliInput(str, TELNET);
 }
 
-//Cli input command from either Telnet or Serial (UART) client gets parsed here:
+void cmdResponse(String str, ClientEnum client)
+{
+    if (client == TELNET)
+    {
+        telnet.println();
+        telnet.println(str);
+        telnet.print(prompt);
+    }
+    else if (client == UART)
+    {
+        Serial1.println();
+        Serial1.println(str);
+        Serial1.print(prompt);
+    }
+}
+
+// Cli input command from either Telnet or Serial1 (UART1) client gets parsed here:
 void onCliInput(String input, ClientEnum client)
 {
     String line = input;
     std::transform(line.begin(), line.end(), line.begin(), ::toupper);
     std::vector<String> lineSplit = util::Split<std::vector<String>>(line, ' ');
     String cmd = lineSplit[0];
+    CommandEnum c = CommandMap()[cmd];
 
-    for (int i = 0; i < lineSplit.size(); i++)
+    switch (c)
     {
-        Serial.println(lineSplit[i]);
+    case LS:
+    case DIR:
+    {
+        File dir = sd.open(path);
+        File f = dir.openNextFile();
+        StreamString streamString;
+
+        while (f)
+        {
+            f.printFileSize(&streamString);
+            streamString.write(' ');
+            f.printModifyDateTime(&streamString);
+            streamString.write(' ');
+            f.printName(&streamString);
+
+            if (f.isDir())
+            {
+                // Indicate a directory.
+                streamString.write('/');
+            }
+            streamString.println();
+            f.close();
+            f = dir.openNextFile();
+        }
+
+        cmdResponse(streamString, client);
+    }
+    break;
+
+    default:
+        break;
     }
 }
 
