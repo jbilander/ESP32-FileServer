@@ -25,7 +25,7 @@ https://github.com/LennartHennigs/ESPTelnet <br />
 
 Status:<br />
 Currently it's possible to FTP with active-ftp to the `ESP32` and store files on a `FAT\FAT32\exFAT` formatted MicroSD-card connected to the SPI-pins `(MOSI 13, MISO 12, SCK 14, CS 4)` on the `ESP32`.
-It is also possible to list the content by connecting a USB-to-TTL-serial-UART-converter to `UART2` (`TX2`, `RX2`) or connect via Telnet from your PC and type the command `ls`.
+It is also possible to list the content by connecting a USB-to-TTL-serial-UART-converter to Serial1 `UART1` (`TX1` pin 15, `RX1` pin 36) or connect via Telnet from your PC and type the command `ls` or `dir` for listing folder and files, and `exit` for disconnecting.
 <br />
 <br />
 `esptool.exe` command to flash the ESP32-DEVKIT-V1 board:
