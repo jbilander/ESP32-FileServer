@@ -25,6 +25,7 @@ SPIClass spi;
 FTPServer ftpSrv;
 SdFat sd;
 
+boolean kermit_cli; // Keeps track if telnet cli is in kermit interactive mode
 uint16_t port = 23; // Telnet port, default is 23
 String path = "/";
 String prompt = path + ">";
@@ -315,8 +316,9 @@ void cmdResponse(String str, ClientEnum client)
 // Cli input command from either Telnet or Serial1 (UART1) client gets parsed here:
 void onCliInput(String input, ClientEnum client)
 {
+    input.trim();
     String line = input;
-    std::transform(line.begin(), line.end(), line.begin(), ::toupper);
+    line.toUpperCase();
     std::vector<String> lineSplit = util::Split<std::vector<String>>(line, ' ');
     String cmd = lineSplit[0];
     CommandEnum c = CommandMap()[cmd];
@@ -349,10 +351,48 @@ void onCliInput(String input, ClientEnum client)
         }
 
         cmdResponse(streamString, client);
+        break;
     }
-    break;
+    case EXIT:
+    {
+        if (kermit_cli)
+        {
+            kermit_cli = false;
+            prompt = path + ">";
+            cmdResponse("", client);
+        }
+        else
+        {
+            if (client == TELNET)
+            {
+                telnet.print("\ndisconnecting you...");
+                telnet.disconnectClient();
+            }
+            else
+            {
+                cmdResponse("", client);
+            }
+        }
+        break;
+    }
+    case KERMIT:
+    {
+        kermit_cli = true;
+        prompt = "(" + path + ") C-Kermit>";
+        cmdResponse("", client);
+        break;
+    }
 
     default:
+
+        if (input != "")
+        {
+            cmdResponse("Unknown command: " + input, client);
+        }
+        else
+        {
+            cmdResponse("" + input, client);
+        }
         break;
     }
 }

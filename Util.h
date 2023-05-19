@@ -38,7 +38,8 @@ namespace util
         NOOP,
         LS,
         DIR,
-        EXIT
+        EXIT,
+        KERMIT
     };
 
     struct CommandMap : public std::map<String, CommandEnum>
@@ -49,6 +50,7 @@ namespace util
             this->operator[]("LS") = LS;
             this->operator[]("DIR") = DIR;
             this->operator[]("EXIT") = EXIT;
+            this->operator[]("KERMIT") = KERMIT;
         };
         ~CommandMap() {}
     };
