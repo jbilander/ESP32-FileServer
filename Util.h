@@ -38,6 +38,7 @@ namespace util
         NOOP,
         LS,
         DIR,
+        CD,
         EXIT,
         KERMIT
     };
@@ -49,6 +50,7 @@ namespace util
             this->operator[]("NOOP") = NOOP;
             this->operator[]("LS") = LS;
             this->operator[]("DIR") = DIR;
+            this->operator[]("CD") = CD;
             this->operator[]("EXIT") = EXIT;
             this->operator[]("KERMIT") = KERMIT;
         };

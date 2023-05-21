@@ -27,8 +27,8 @@ SdFat sd;
 
 boolean kermit_cli; // Keeps track if telnet cli is in kermit interactive mode
 uint16_t port = 23; // Telnet port, default is 23
-String path = "/";
-String prompt = path + ">";
+String path = "/";  // Filesystem root
+String prompt;      // The prompt to display on Serial or Telnet CLI
 
 /*
 SPI  | MOSI     MISO     CLK      CS
@@ -157,6 +157,7 @@ void initWiFi()
 
 void setup()
 {
+    setPrompt();
     Serial.begin(115200);                      // HardwareSerial 0, UART0 pins are connected to the USB-to-Serial converter and are used for flashing and debugging.
     Serial2.begin(38400);                      // HardwareSerial 2, used for Kermit over serial transfer
     Serial1.begin(9600, SERIAL_8N1, RX1, TX1); // HardwareSerial 1, used for CLI over serial (optional instead of using telnet)
@@ -313,14 +314,26 @@ void cmdResponse(String str, ClientEnum client)
     }
 }
 
+void setPrompt()
+{
+    if (kermit_cli)
+    {
+        prompt = "(" + path + ") C-Kermit>";
+    }
+    else
+    {
+        prompt = path + ">";
+    }
+}
+
 // Cli input command from either Telnet or Serial1 (UART1) client gets parsed here:
 void onCliInput(String input, ClientEnum client)
 {
     input.trim();
     String line = input;
-    line.toUpperCase();
     std::vector<String> lineSplit = util::Split<std::vector<String>>(line, ' ');
     String cmd = lineSplit[0];
+    cmd.toUpperCase();
     CommandEnum c = CommandMap()[cmd];
 
     switch (c)
@@ -358,7 +371,7 @@ void onCliInput(String input, ClientEnum client)
         if (kermit_cli)
         {
             kermit_cli = false;
-            prompt = path + ">";
+            setPrompt();
             cmdResponse("", client);
         }
         else
@@ -375,10 +388,62 @@ void onCliInput(String input, ClientEnum client)
         }
         break;
     }
+    case CD:
+    {
+        String arg = lineSplit.size() > 1 ? lineSplit[1] : "";
+
+        if (sd.chdir(arg))
+        {
+            if (arg == "/")
+            {
+                path = arg;
+            }
+            else
+            {
+                sd.chdir(path);
+                std::vector<String> splitPath = util::Split<std::vector<String>>(arg, '/');
+
+                for (int i = 0; i < splitPath.size(); i++)
+                {
+                    if (splitPath[i] != "")
+                    {
+                        File dir = sd.open(splitPath[i]);
+                        char name[263];
+                        dir.getName(name, 263);
+                        if (path == "/")
+                            path = "";
+                        path += "/" + String(name);
+                        sd.chdir(splitPath[i]);
+                    }
+                }
+            }
+            setPrompt();
+            cmdResponse("", client);
+        }
+        else
+        {
+            if (arg == "..")
+            {
+                if (path != "/")
+                {
+                    int index = path.lastIndexOf("/");
+                    index == 0 ? path = "/" : path = path.substring(0, index);
+                }
+                sd.chdir(path);
+                setPrompt();
+                cmdResponse("", client);
+            }
+            else
+            {
+                cmdResponse("The system cannot find the path specified.", client);
+            }
+        }
+        break;
+    }
     case KERMIT:
     {
         kermit_cli = true;
-        prompt = "(" + path + ") C-Kermit>";
+        setPrompt();
         cmdResponse("", client);
         break;
     }
