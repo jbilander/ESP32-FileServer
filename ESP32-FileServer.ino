@@ -3,6 +3,7 @@
 #include <SdFat.h>
 #include <WiFi.h>
 #include <ESP32-FTP-Server.h>
+#include <ESP32-ParIO-Server.h>
 #include <ESPTelnet.h>
 #include <StreamString.h>
 #include "Util.h"
@@ -17,12 +18,15 @@
 
 using namespace util;
 
-ESPTelnet telnet;
 TaskHandle_t task_TelnetCLI;
 TaskHandle_t task_SerialCLI;
 TaskHandle_t task_FTP;
+TaskHandle_t task_ParIO;
+
 SPIClass spi;
+ESPTelnet telnet;
 FTPServer ftpSrv;
+ParIOServer parioSrv;
 SdFat sd;
 
 boolean kermit_cli; // Keeps track if telnet cli is in kermit interactive mode
@@ -160,24 +164,26 @@ void setup()
     setPrompt();
     Serial.begin(115200);                      // HardwareSerial 0, UART0 pins are connected to the USB-to-Serial converter and are used for flashing and debugging.
     Serial2.begin(38400);                      // HardwareSerial 2, used for Kermit over serial transfer
-    Serial1.begin(9600, SERIAL_8N1, RX1, TX1); // HardwareSerial 1, used for CLI over serial (optional instead of using telnet)
+    Serial1.begin(19200, SERIAL_8N1, RX1, TX1); // HardwareSerial 1, used for CLI over serial (optional instead of using telnet)
     pinMode(ACT_LED, OUTPUT);
 
     initWiFi();
 
-    // create a task that will be executed in the TaskTelnetCLI() function, with priority 1 and executed on core 0
+    parioSrv.setup();
+
+    // create a task that will be executed in the TaskTelnetCLI() function, with priority 2 and executed on core 0
     xTaskCreatePinnedToCore(
         TaskTelnetCLI,   /* Task function. */
         "TaskTelnetCLI", /* name of task. */
         10000,           /* Stack size of task */
         NULL,            /* parameter of the task */
-        1,               /* priority of the task */
+        2,               /* priority of the task */
         &task_TelnetCLI, /* Task handle to keep track of created task */
         0);              /* pin task to core 0 */
 
     delay(500);
 
-    // create a task that will be executed in the TaskSerialCLI() function, with priority 2 and executed on core 0
+    // create a task that will be executed in the TaskSerialCLI() function, with priority 2 and executed on core 1
     xTaskCreatePinnedToCore(
         TaskSerialCLI,   /* Task function. */
         "TaskSerialCLI", /* name of task. */
@@ -185,11 +191,11 @@ void setup()
         NULL,            /* parameter of the task */
         2,               /* priority of the task */
         &task_SerialCLI, /* Task handle to keep track of created task */
-        0);              /* pin task to core 0 */
+        1);              /* pin task to core 1 */
 
     delay(500);
 
-    // create a task that will be executed in the TaskFTP() function, with priority 1 and executed on core 1
+    // create a task that will be executed in the TaskFTP() function, with priority 1 and executed on core 0
     xTaskCreatePinnedToCore(
         TaskFTP,   /* Task function. */
         "TaskFTP", /* name of task. */
@@ -197,7 +203,19 @@ void setup()
         NULL,      /* parameter of the task */
         1,         /* priority of the task */
         &task_FTP, /* Task handle to keep track of created task */
-        1);        /* pin task to core 1 */
+        0);        /* pin task to core 0 */
+
+    delay(500);
+
+    // create a task that will be executed in the TaskFTP() function, with priority 1 and executed on core 1
+    xTaskCreatePinnedToCore(
+        TaskParIO,   /* Task function. */
+        "TaskParIO", /* name of task. */
+        10000,       /* Stack size of task */
+        NULL,        /* parameter of the task */
+        1,           /* priority of the task */
+        &task_ParIO, /* Task handle to keep track of created task */
+        1);          /* pin task to core 1 */
 
     delay(500);
 }
@@ -256,6 +274,18 @@ void TaskFTP(void *pvParameters)
     while (true)
     {
         ftpSrv.handle();
+        vTaskDelay(1);
+    }
+}
+
+void TaskParIO(void *pvParameters)
+{
+    Serial.print("Task_ParIO running on core ");
+    Serial.println(xPortGetCoreID());
+
+    while (true)
+    {
+        parioSrv.handle();
         vTaskDelay(1);
     }
 }
